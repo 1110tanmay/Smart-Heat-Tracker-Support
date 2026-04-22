@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Heat Tracker — Core Body Temperature for Apple Watch</title>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080808;
+      --bg2: #0f0f0f;
+      --surface: #141414;
+      --surface2: #1c1c1c;
+      --border: rgba(255,255,255,0.07);
+      --heat1: #ff4e00;
+      --heat2: #ff8c00;
+      --heat3: #ffcc44;
+      --text: #f0ece6;
+      --muted: #888070;
+      --subtle: #3a3530;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      font-weight: 400;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NOISE OVERLAY ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 20px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(to bottom, rgba(8,8,8,0.95) 0%, transparent 100%);
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-logo {
+      font-family: 'Chakra Petch', monospace;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-logo span { color: var(--heat1); }
+
+    .nav-links {
+      display: flex;
+      gap: 36px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      padding: 120px 48px 80px;
+    }
+
+    .hero-glow {
+      position: absolute;
+      width: 800px; height: 800px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,78,0,0.12) 0%, rgba(255,78,0,0.04) 40%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation: pulse-glow 4s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      50% { transform: translate(-50%, -50%) scale(1.08); opacity: 0.7; }
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      max-width: 1100px;
+      width: 100%;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,78,0,0.1);
+      border: 1px solid rgba(255,78,0,0.3);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 0.75rem;
+      font-family: 'Chakra Petch', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--heat2);
+      margin-bottom: 24px;
+    }
+
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--heat1);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    h1 {
+      font-family: 'Chakra Petch', monospace;
+      font-size: clamp(2.8rem, 5vw, 4.2rem);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+
+    h1 .accent { color: var(--heat1); }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      color: var(--muted);
+      font-weight: 300;
+      max-width: 480px;
+      margin-bottom: 40px;
+      line-height: 1.7;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--heat1);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .btn-primary:hover { background: #ff6820; transform: translateY(-1px); }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      padding: 14px 20px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
+
+    /* ── THERMAL RING ANIMATION ── */
+    .hero-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thermal-ring-wrap {
+      position: relative;
+      width: 320px;
+      height: 320px;
+    }
+
+    .ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation: ring-expand linear infinite;
+      opacity: 0;
+    }
+
+    .ring:nth-child(1) { width: 100px; height: 100px; border-color: rgba(255,78,0,0.8); animation-duration: 3s; animation-delay: 0s; }
+    .ring:nth-child(2) { width: 100px; height: 100px; border-color: rgba(255,140,0,0.6); animation-duration: 3s; animation-delay: 0.75s; }
+    .ring:nth-child(3) { width: 100px; height: 100px; border-color: rgba(255,200,50,0.4); animation-duration: 3s; animation-delay: 1.5s; }
+    .ring:nth-child(4) { width: 100px; height: 100px; border-color: rgba(255,78,0,0.2); animation-duration: 3s; animation-delay: 2.25s; }
+
+    @keyframes ring-expand {
+      0% { width: 80px; height: 80px; opacity: 1; }
+      100% { width: 320px; height: 320px; opacity: 0; }
+    }
+
+    .thermal-core {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ff4e00, #cc2200);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      box-shadow: 0 0 40px rgba(255,78,0,0.6), 0 0 80px rgba(255,78,0,0.2);
+      z-index: 2;
+    }
+
+    .thermal-core-temp {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .thermal-core-label {
+      font-size: 0.5rem;
+      font-family: 'Chakra Petch', monospace;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.7);
+      text-transform: uppercase;
+    }
+
+    .temp-counter { animation: count-up 3s ease-out forwards; }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      position: relative;
+      z-index: 2;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 28px 48px;
+      display: flex;
+      justify-content: center;
+      gap: 80px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--heat2);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── SECTION COMMONS ── */
+    section {
+      position: relative;
+      z-index: 2;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 48px;
+    }
+
+    .section-label {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--heat1);
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-family: 'Chakra Petch', monospace;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 60px;
+    }
+
+    /* ── FEATURES ── */
+    .features {
+      padding: 100px 0;
+      background: var(--bg2);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      padding: 36px 32px;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.25s;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,78,0,0.05) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover { background: var(--surface2); }
+    .feature-card:hover::before { opacity: 1; }
+
+    .feature-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: rgba(255,78,0,0.1);
+      border: 1px solid rgba(255,78,0,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+    }
+
+    .feature-title {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      letter-spacing: 0.02em;
+    }
+
+    .feature-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how {
+      padding: 100px 0;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      position: relative;
+    }
+
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 28px;
+      left: 14%;
+      right: 14%;
+      height: 1px;
+      background: linear-gradient(to right, var(--heat1), var(--heat2), var(--heat3));
+      opacity: 0.3;
+    }
+
+    .step {
+      text-align: center;
+      padding: 0 20px;
+    }
+
+    .step-num {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--heat2);
+      margin: 0 auto 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-title {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .step-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── PRIVACY ── */
+    .privacy {
+      padding: 100px 0;
+      background: var(--bg2);
+    }
+
+    .privacy-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .privacy-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .lock-icon-wrap {
+      width: 180px; height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,78,0,0.08) 0%, transparent 70%);
+      border: 1px solid rgba(255,78,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5rem;
+      position: relative;
+    }
+
+    .lock-icon-wrap::before, .lock-icon-wrap::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(255,78,0,0.08);
+    }
+
+    .lock-icon-wrap::before { width: 240px; height: 240px; }
+    .lock-icon-wrap::after { width: 300px; height: 300px; }
+
+    .privacy-points {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-top: 32px;
+    }
+
+    .privacy-point {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .point-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--heat1);
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+
+    .point-text {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .point-text strong { color: var(--text); font-weight: 500; }
+
+    /* ── FAQ ── */
+    .faq {
+      padding: 100px 0;
+    }
+
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      max-width: 720px;
+    }
+
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .faq-item:last-child { border-bottom: none; }
+
+    .faq-q {
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+      border: none;
+      padding: 22px 28px;
+      text-align: left;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+
+    .faq-q:hover { background: var(--surface2); }
+
+    .faq-arrow {
+      font-size: 0.7rem;
+      color: var(--heat1);
+      transition: transform 0.25s;
+      flex-shrink: 0;
+      margin-left: 16px;
+    }
+
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+
+    .faq-a {
+      background: var(--bg2);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease, padding 0.3s;
+      padding: 0 28px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .faq-item.open .faq-a {
+      max-height: 300px;
+      padding: 20px 28px;
+    }
+
+    /* ── CONTACT ── */
+    .contact {
+      padding: 100px 0;
+      background: var(--bg2);
+    }
+
+    .contact-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: start;
+    }
+
+    .contact-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.75rem;
+      font-family: 'Chakra Petch', monospace;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    input, textarea, select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(255,78,0,0.4);
+    }
+
+    select option { background: var(--surface); }
+    textarea { resize: vertical; min-height: 120px; }
+
+    .btn-submit {
+      background: var(--heat1);
+      color: #fff;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+      align-self: flex-start;
+    }
+
+    .btn-submit:hover { background: #ff6820; transform: translateY(-1px); }
+
+    .contact-info h3 {
+      font-family: 'Chakra Petch', monospace;
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+
+    .contact-info p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.7;
+      margin-bottom: 28px;
+    }
+
+    .contact-email {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--heat2);
+      text-decoration: none;
+      font-family: 'Chakra Petch', monospace;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(255,140,0,0.3);
+      padding-bottom: 4px;
+      transition: border-color 0.2s;
+    }
+
+    .contact-email:hover { border-color: var(--heat2); }
+
+    /* ── DISCLAIMER ── */
+    .disclaimer {
+      padding: 48px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 2;
+    }
+
+    .disclaimer p {
+      font-size: 0.78rem;
+      color: var(--subtle);
+      max-width: 680px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 2;
+    }
+
+    .footer-logo {
+      font-family: 'Chakra Petch', monospace;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .footer-logo span { color: var(--heat1); }
+
+    footer p {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* ── SCROLL REVEAL ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--subtle); border-radius: 3px; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      nav { padding: 16px 24px; }
+      .nav-links { display: none; }
+      .hero { padding: 100px 24px 60px; }
+      .hero-inner { grid-template-columns: 1fr; gap: 48px; text-align: center; }
+      .hero-sub { margin: 0 auto 40px; }
+      .hero-cta { justify-content: center; }
+      .hero-visual { display: none; }
+      .stats-bar { padding: 24px; gap: 32px; flex-wrap: wrap; }
+      .container { padding: 0 24px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; gap: 40px; }
+      .steps::before { display: none; }
+      .privacy-inner, .contact-inner { grid-template-columns: 1fr; gap: 48px; }
+      .privacy-visual { display: none; }
+      footer { flex-direction: column; gap: 12px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="#" class="nav-logo">Smart<span>Heat</span> Tracker</a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How It Works</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#contact">Support</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-inner">
+      <div>
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          Now on the App Store
+        </div>
+        <h1>Know Your <span class="accent">Core.</span><br>In Real Time.</h1>
+        <p class="hero-sub">
+          The first app to estimate your core body temperature using only Apple Watch heart rate data. No extra hardware. No cloud. Just you and your watch.
+        </p>
+        <div class="hero-cta">
+          <a href="#" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            Download on App Store
+          </a>
+          <a href="#faq" class="btn-ghost">Learn More ↓</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="thermal-ring-wrap">
+          <div class="ring"></div>
+          <div class="ring"></div>
+          <div class="ring"></div>
+          <div class="ring"></div>
+          <div class="thermal-core">
+            <div class="thermal-core-temp">37.4°</div>
+            <div class="thermal-core-label">Core Temp</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar">
+    <div class="stat reveal">
+      <div class="stat-value">±0.2°C</div>
+      <div class="stat-label">Estimation Accuracy</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-value">5+</div>
+      <div class="stat-label">Metrics Per Second</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-value">100%</div>
+      <div class="stat-label">On-Device Processing</div>
+    </div>
+    <div class="stat reveal">
+      <div class="stat-value">0</div>
+      <div class="stat-label">Data Shared Externally</div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="container">
+      <p class="section-label reveal">Capabilities</p>
+      <h2 class="reveal">Built for the Heat-Aware.</h2>
+      <p class="section-desc reveal">Everything you need to understand how your body responds to heat — all powered by the Apple Watch already on your wrist.</p>
+      <div class="features-grid reveal">
+        <div class="feature-card">
+          <div class="feature-icon">🌡️</div>
+          <div class="feature-title">Core Temp Estimation</div>
+          <p class="feature-desc">Estimates core body temperature in real time using a clinically-validated algorithm and live Apple Watch heart rate data.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">❤️</div>
+          <div class="feature-title">Live Heart Rate Tracking</div>
+          <p class="feature-desc">Captures heart rate data continuously via Apple Watch — no manual input, no delays, no interruptions.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <div class="feature-title">Activity Level Monitoring</div>
+          <p class="feature-desc">Tracks your activity intensity alongside temperature trends to give you the full thermal picture during workouts.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔒</div>
+          <div class="feature-title">100% On-Device</div>
+          <p class="feature-desc">All processing happens locally. No cloud, no servers, no third-party data sharing. Ever.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⌚</div>
+          <div class="feature-title">Apple Watch Native</div>
+          <p class="feature-desc">A fully native watchOS experience with seamless iPhone companion sync via WatchConnectivity.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <div class="feature-title">Intuitive Visualizations</div>
+          <p class="feature-desc">Clean, real-time charts designed for awareness at a glance — during a run, in a gym, or out in the heat.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how" id="how">
+    <div class="container">
+      <p class="section-label reveal">Process</p>
+      <h2 class="reveal">How It Works</h2>
+      <p class="section-desc reveal">From your wrist to a core temperature estimate — in under a second.</p>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-num">01</div>
+          <div class="step-title">Wear Your Watch</div>
+          <p class="step-desc">Make sure your Apple Watch is snug. Open Smart Heat Tracker and start a session.</p>
+        </div>
+        <div class="step reveal">
+          <div class="step-num">02</div>
+          <div class="step-title">Heart Rate Captured</div>
+          <p class="step-desc">Your Apple Watch streams live heart rate data at 5+ readings per second.</p>
+        </div>
+        <div class="step reveal">
+          <div class="step-num">03</div>
+          <div class="step-title">Algorithm Processes</div>
+          <p class="step-desc">A clinically-validated estimation algorithm calculates your core body temperature locally on-device.</p>
+        </div>
+        <div class="step reveal">
+          <div class="step-num">04</div>
+          <div class="step-title">Insights Displayed</div>
+          <p class="step-desc">Live temperature trends appear on your watch and iPhone with clean, readable visuals.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRIVACY -->
+  <section class="privacy" id="privacy">
+    <div class="container">
+      <div class="privacy-inner">
+        <div>
+          <p class="section-label reveal">Privacy</p>
+          <h2 class="reveal">Your Data.<br>Your Device.<br>Full Stop.</h2>
+          <p class="section-desc reveal" style="margin-bottom: 0;">We don't want your data. We don't store it. We don't send it anywhere.</p>
+          <div class="privacy-points">
+            <div class="privacy-point reveal">
+              <div class="point-dot"></div>
+              <p class="point-text"><strong>Zero cloud processing.</strong> All temperature estimation happens on your iPhone and Apple Watch — nothing leaves your device.</p>
+            </div>
+            <div class="privacy-point reveal">
+              <div class="point-dot"></div>
+              <p class="point-text"><strong>No account required.</strong> No sign-up, no login, no email. Just install and use.</p>
+            </div>
+            <div class="privacy-point reveal">
+              <div class="point-dot"></div>
+              <p class="point-text"><strong>HealthKit compliant.</strong> Health data is handled in full compliance with Apple's health data privacy standards.</p>
+            </div>
+            <div class="privacy-point reveal">
+              <div class="point-dot"></div>
+              <p class="point-text"><strong>No third-party SDKs.</strong> No analytics trackers, no ad networks, no data brokers.</p>
+            </div>
+          </div>
+        </div>
+        <div class="privacy-visual reveal">
+          <div class="lock-icon-wrap">🔒</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq" id="faq">
+    <div class="container">
+      <p class="section-label reveal">Support</p>
+      <h2 class="reveal">Frequently Asked Questions</h2>
+      <p class="section-desc reveal">Got a question? It might already be answered here.</p>
+      <div class="faq-list reveal">
+        <div class="faq-item">
+          <button class="faq-q">Which Apple Watch models are supported? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">Smart Heat Tracker requires Apple Watch Series 4 or later running watchOS 7 or above, paired with an iPhone running iOS 15 or later.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Is this a medical device? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">No. Smart Heat Tracker is designed strictly for personal awareness and informational purposes. It is not a medical device and should not be used for clinical decision-making, diagnosis, or treatment. Always consult a qualified healthcare professional for any medical concerns.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">How accurate is the core temperature estimation? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">The app uses a clinically-validated algorithm to estimate core body temperature to within ±0.2°C. Accuracy depends on proper watch fit and consistent heart rate signal quality.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Does the app require an internet connection? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">No. Smart Heat Tracker works entirely offline. All processing is on-device, so you can use it anywhere — no Wi-Fi or cellular required.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Does the app store my health data anywhere? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">Your data is stored only on your device using Apple's HealthKit framework. Nothing is sent to external servers or third parties. Deleting the app removes all associated data.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Why does my temperature reading vary between sessions? <span class="faq-arrow">▼</span></button>
+          <div class="faq-a">Core body temperature naturally fluctuates based on activity level, hydration, ambient temperature, and time of day. Variations between sessions are normal and expected.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="contact" id="contact">
+    <div class="container">
+      <div class="contact-inner">
+        <div>
+          <p class="section-label reveal">Get In Touch</p>
+          <h2 class="reveal">Need Help?</h2>
+          <p class="section-desc reveal" style="margin-bottom: 28px;">Something not working right? Have a suggestion? We'd love to hear from you. Most queries are responded to within 48 hours.</p>
+          <a href="mailto:1110tanmay@gmail.com" class="contact-email reveal">
+            📧 1110tanmay@gmail.com
+          </a>
+        </div>
+        <div class="contact-form reveal">
+          <div class="form-group">
+            <label for="name">Your Name</label>
+            <input type="text" id="name" placeholder="Tanmay Shelar" />
+          </div>
+          <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" placeholder="you@example.com" />
+          </div>
+          <div class="form-group">
+            <label for="issue">Issue Type</label>
+            <select id="issue">
+              <option value="">Select a topic…</option>
+              <option>App crash or bug</option>
+              <option>Inaccurate readings</option>
+              <option>Apple Watch connectivity</option>
+              <option>Feature request</option>
+              <option>Privacy question</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="message">Message</label>
+            <textarea id="message" placeholder="Describe your issue or question…"></textarea>
+          </div>
+          <button class="btn-submit" onclick="handleSubmit()">Send Message →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DISCLAIMER -->
+  <div class="disclaimer">
+    <p>
+      <strong style="color: var(--muted);">Disclaimer:</strong> Smart Heat Tracker is designed for personal awareness only. It is not a medical device and is not intended for clinical use, diagnosis, or treatment. The core body temperature values displayed are estimates based on heart rate data and a validated algorithm — they are not guaranteed to be clinically accurate. Always consult a qualified healthcare professional for any health-related concerns. Use of this app is at your own discretion.
+    </p>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">Smart<span>Heat</span> Tracker</div>
+    <p>Built by Tanmay Shelar · Arizona State University</p>
+    <p style="font-size:0.75rem; color: var(--muted);">© 2025 Smart Heat Tracker. All rights reserved.</p>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((e, i) => {
+        if (e.isIntersecting) {
+          setTimeout(() => e.target.classList.add('visible'), i * 60);
+        }
+      });
+    }, { threshold: 0.1 });
+    reveals.forEach(r => observer.observe(r));
+
+    // FAQ accordion
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.parentElement;
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+        if (!wasOpen) item.classList.add('open');
+      });
+    });
+
+    // Contact form handler (mailto fallback)
+    function handleSubmit() {
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const issue = document.getElementById('issue').value;
+      const msg = document.getElementById('message').value;
+      if (!email || !msg) { alert('Please fill in your email and message.'); return; }
+      const subject = encodeURIComponent(`[Smart Heat Tracker Support] ${issue || 'General'}`);
+      const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nIssue: ${issue}\n\n${msg}`);
+      window.location.href = `mailto:support@smartheattrackerapp.com?subject=${subject}&body=${body}`;
+    }
+  </script>
+
+</body>
+</html>
